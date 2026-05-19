@@ -9,6 +9,20 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import os
 
 
+# Human-readable descriptions for each alert type
+_ALERT_DESCRIPTIONS = {
+    "GAZE_OFF":       "Candidate gaze deviated off-screen.",
+    "MULTIPLE_FACES": "Multiple faces detected in frame.",
+    "NO_FACE":        "No face detected — candidate may have left the seat.",
+    "HEAD_TURN_RAPID":"Rapid or sustained head turn detected.",
+    "LIP_MOVEMENT":   "Lip movement detected — possible whispering.",
+}
+
+
+def _alert_desc(alert_type: str) -> str:
+    return _ALERT_DESCRIPTIONS.get(str(alert_type).upper(), str(alert_type))
+
+
 def build_json_report(session, gaze_events, alerts) -> dict:
     duration = ""
     if session.end_time and session.start_time:
@@ -24,7 +38,7 @@ def build_json_report(session, gaze_events, alerts) -> dict:
             "time": a.timestamp.strftime("%H:%M:%S") if a.timestamp else "",
             "type": a.alert_type,
             "severity": a.severity,
-            "description": a.description,
+            "description": _alert_desc(a.alert_type),
             "screenshot": a.screenshot_path,
         })
 
@@ -32,18 +46,18 @@ def build_json_report(session, gaze_events, alerts) -> dict:
     for g in gaze_events:
         gaze_log.append({
             "timestamp": g.timestamp.isoformat() if g.timestamp else "",
-            "direction": g.gaze_direction,
+            "direction": g.direction,          # fixed: was g.gaze_direction
             "confidence": g.confidence,
-            "flagged": g.flagged,
+            "flagged": g.is_flagged,            # fixed: was g.flagged
         })
 
     return {
         "session_id": f"INT-{session.id:04d}",
-        "candidate": session.candidate_name,
+        "candidate": getattr(session, "candidate_name", "Unknown"),
         "start_time": session.start_time.isoformat() if session.start_time else None,
         "end_time": session.end_time.isoformat() if session.end_time else None,
         "duration": duration,
-        "risk_score": session.risk_score,
+        "risk_score": float(session.risk_score),
         "verdict": session.verdict,
         "events": events_data,
         "gaze_log": gaze_log,
@@ -60,22 +74,23 @@ def build_pdf_report(session, gaze_events, alerts, output_path: str):
     story.append(Paragraph("AI Interview Proctoring Report", title_style))
 
     sub_style = ParagraphStyle("Sub", fontSize=11, spaceAfter=6, textColor=colors.HexColor("#475569"))
-    story.append(Paragraph(f"Candidate: <b>{session.candidate_name}</b>", sub_style))
+    candidate_name = getattr(session, "candidate_name", "Unknown")
+    story.append(Paragraph(f"Candidate: <b>{candidate_name}</b>", sub_style))
     story.append(Paragraph(f"Session ID: INT-{session.id:04d}", sub_style))
     story.append(Paragraph(f"Start Time: {session.start_time.strftime('%Y-%m-%d %H:%M:%S') if session.start_time else 'N/A'}", sub_style))
     story.append(Paragraph(f"End Time: {session.end_time.strftime('%Y-%m-%d %H:%M:%S') if session.end_time else 'Ongoing'}", sub_style))
 
-    verdict_color = "#16a34a" if session.verdict == "TRUSTED" else ("#d97706" if session.verdict == "SUSPICIOUS" else "#dc2626")
-    story.append(Paragraph(f"Risk Score: <b>{session.risk_score:.1f}%</b>", sub_style))
+    verdict_color = "#16a34a" if session.verdict == "trusted" else ("#d97706" if session.verdict == "suspicious" else "#dc2626")
+    story.append(Paragraph(f"Risk Score: <b>{float(session.risk_score):.1f}%</b>", sub_style))
     story.append(Paragraph(f"Verdict: <font color='{verdict_color}'><b>{session.verdict}</b></font>", sub_style))
     story.append(Spacer(1, 0.5 * cm))
 
     # Summary Stats
     story.append(Paragraph("Summary Statistics", ParagraphStyle("H2", fontSize=13, spaceAfter=6, fontName="Helvetica-Bold", textColor=colors.HexColor("#1e293b"))))
 
-    gaze_off_count = sum(1 for a in alerts if a.alert_type == "GAZE_OFF")
-    multi_face_count = sum(1 for a in alerts if a.alert_type == "MULTIPLE_FACES")
-    no_face_count = sum(1 for a in alerts if a.alert_type == "NO_FACE")
+    gaze_off_count = sum(1 for a in alerts if str(a.alert_type).upper() == "GAZE_OFF")
+    multi_face_count = sum(1 for a in alerts if str(a.alert_type).upper() == "MULTIPLE_FACES")
+    no_face_count = sum(1 for a in alerts if str(a.alert_type).upper() == "NO_FACE")
 
     stats_data = [
         ["Metric", "Value"],
@@ -104,7 +119,7 @@ def build_pdf_report(session, gaze_events, alerts, output_path: str):
         alert_data = [["Time", "Type", "Severity", "Description"]]
         for a in alerts:
             t = a.timestamp.strftime("%H:%M:%S") if a.timestamp else ""
-            alert_data.append([t, a.alert_type or "", a.severity or "", (a.description or "")[:60]])
+            alert_data.append([t, str(a.alert_type) or "", str(a.severity) or "", _alert_desc(a.alert_type)[:60]])
 
         alert_table = Table(alert_data, colWidths=[3 * cm, 4.5 * cm, 3 * cm, 8 * cm])
         sev_colors = {"HIGH": colors.HexColor("#fee2e2"), "MEDIUM": colors.HexColor("#fef9c3"), "LOW": colors.HexColor("#dcfce7")}
@@ -117,7 +132,7 @@ def build_pdf_report(session, gaze_events, alerts, output_path: str):
             ("PADDING", (0, 0), (-1, -1), 5),
         ]
         for i, a in enumerate(alerts, 1):
-            bg = sev_colors.get(a.severity, colors.white)
+            bg = sev_colors.get(str(a.severity).upper(), colors.white)
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), bg))
         alert_table.setStyle(TableStyle(style_cmds))
         story.append(alert_table)

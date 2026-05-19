@@ -1,0 +1,10 @@
+INFO:     Started server process [11512]
+INFO:     Waiting for application startup.
+f:\AI_Inteview_Detection\backend\venv\Lib\site-packages\aiomysql\cursors.py:239: Warning: Can't create database 'proctoring_db'; database exists
+  await self._query(query)
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:62506 - "POST /api/auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:54770 - "POST /api/auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:51670 - "POST /api/auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:60758 - "POST /api/auth/login HTTP/1.1" 401 Unauthorized

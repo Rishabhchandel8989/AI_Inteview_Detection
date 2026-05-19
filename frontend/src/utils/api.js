@@ -1,31 +1,25 @@
-const API_BASE = 'http://localhost:8000';
+import axios from 'axios';
 
-export async function createSession(candidateName) {
-  const res = await fetch(`${API_BASE}/sessions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ candidate_name: candidateName })
-  });
-  if (!res.ok) throw new Error('Failed to create session');
-  return res.json();
-}
+const api = axios.create({
+  baseURL: 'http://localhost:8000/api',
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
 
-export async function getSessions() {
-  const res = await fetch(`${API_BASE}/sessions`);
-  if (!res.ok) throw new Error('Failed to fetch sessions');
-  return res.json();
-}
+// Intercept responses to handle 401 Unauthorized globally
+api.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // Clear token and redirect to login
+      localStorage.removeItem('access_token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
 
-export async function getSessionDetail(id) {
-  const res = await fetch(`${API_BASE}/sessions/${id}`);
-  if (!res.ok) throw new Error('Failed to fetch session detail');
-  return res.json();
-}
-
-export async function endSession(id) {
-  const res = await fetch(`${API_BASE}/sessions/${id}/end`, {
-    method: 'PATCH'
-  });
-  if (!res.ok) throw new Error('Failed to end session');
-  return res.json();
-}
+export default api;

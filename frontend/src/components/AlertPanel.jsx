@@ -56,14 +56,14 @@ export default function AlertPanel({ alerts }) {
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start mb-1">
                   <span className="font-medium truncate pr-2">
-                    {alert.alert_type.replace(/_/g, ' ')}
+                    {(alert.alert_type || 'ALERT').replace(/_/g, ' ')}
                   </span>
                   <span className="text-xs font-mono opacity-60 shrink-0">
-                    {new Date(alert.timestamp).toLocaleTimeString()}
+                    {alert.timestamp ? new Date(alert.timestamp).toLocaleTimeString() : '—'}
                   </span>
                 </div>
                 <p className="text-sm opacity-80 leading-snug">
-                  {alert.description}
+                  {alert.description || alert.msg || ''}
                 </p>
               </div>
             </div>

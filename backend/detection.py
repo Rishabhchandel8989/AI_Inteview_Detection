@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
-from typing import Optional
+from typing import Optional, Dict, Deque
+from collections import deque
 import base64
 import os
 
@@ -10,6 +11,21 @@ EYE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xml
 
 SCREENSHOTS_DIR = "screenshots"
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
+
+# ─── Temporal Smoothing Buffers ────────────────────────────────────────────────
+# Keyed by session_id → deque of (gaze_direction, face_count) tuples
+_gaze_history: Dict[str, Deque] = {}
+_head_turn_history: Dict[str, Deque] = {}
+
+HISTORY_SIZE = 5          # Analyse last N frames
+GAZE_CONFIRM_THRESH = 3   # Need ≥ this many off-center frames in the window to alert
+HEAD_TURN_CONFIRM = 2     # Need ≥ this many narrow-AR frames to alert
+
+
+def _get_history(session_key: str, store: Dict, maxlen: int) -> Deque:
+    if session_key not in store:
+        store[session_key] = deque(maxlen=maxlen)
+    return store[session_key]
 
 
 def decode_frame(b64_data: str) -> Optional[np.ndarray]:
@@ -25,23 +41,78 @@ def decode_frame(b64_data: str) -> Optional[np.ndarray]:
         return None
 
 
-def analyze_frame(frame: np.ndarray) -> dict:
+def _compute_gaze_from_face_center(face_cx: int, face_cy: int,
+                                    w: int, h: int) -> str:
+    """Coarse gaze estimation from face-centre position in frame."""
+    h_margin = w * 0.22
+    v_margin = h * 0.22
+    if face_cx < h_margin:
+        return "left"
+    elif face_cx > w - h_margin:
+        return "right"
+    elif face_cy < v_margin:
+        return "up"
+    elif face_cy > h - v_margin:
+        return "down"
+    return "center"
+
+
+def _compute_gaze_from_eyes(eyes: np.ndarray, fw: int, fh: int) -> Optional[str]:
+    """Refined gaze from eye-centre ratio within face ROI. Returns None if not confident."""
+    if len(eyes) < 2:
+        return None
+    # Take the two largest eye boxes (most likely real eyes vs brows)
+    eyes_sorted = sorted(eyes, key=lambda e: e[2] * e[3], reverse=True)[:2]
+    eye_centers = [(ex + ew // 2, ey + eh // 2) for (ex, ey, ew, eh) in eyes_sorted]
+    avg_eye_x = sum(e[0] for e in eye_centers) / 2
+    avg_eye_y = sum(e[1] for e in eye_centers) / 2
+    eye_x_ratio = avg_eye_x / fw
+    eye_y_ratio = avg_eye_y / fh
+
+    if eye_x_ratio < 0.33:
+        return "left"
+    elif eye_x_ratio > 0.67:
+        return "right"
+    elif eye_y_ratio < 0.28:
+        return "up"
+    elif eye_y_ratio > 0.62:
+        return "down"
+    return "center"
+
+
+def _normalized_lip_variance(face_roi_gray: np.ndarray, fh: int) -> float:
+    """Return lip-movement score normalized by local mean brightness to resist lighting changes."""
+    lower_face = face_roi_gray[int(fh * 0.65):, :]
+    if lower_face.size == 0:
+        return 0.0
+    mean_brightness = float(np.mean(lower_face)) + 1e-5   # avoid div/0
+    variance = float(np.var(lower_face))
+    return variance / mean_brightness   # normalized
+
+
+def analyze_frame(frame: np.ndarray, session_key: str = "default") -> dict:
     """
-    Analyzes a single frame for:
-    - Number of faces (multiple / none detection)
-    - Approximate gaze direction per face using eye positions
-    - Rapid head turn indicator via face box aspect ratio
-    - Lip movement heuristic via lower face brightness variation
+    Analyzes a single frame for cheating signals.
+    Uses temporal smoothing so isolated noisy frames don't create false alerts.
+
+    Args:
+        frame:       OpenCV BGR image (np.ndarray)
+        session_key: Unique identifier (e.g. str(session_id)) for per-session history
+
+    Returns:
+        Detection dict compatible with the DB/API schema.
     """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     h, w = frame.shape[:2]
 
-    faces = FACE_CASCADE.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80))
+    faces = FACE_CASCADE.detectMultiScale(
+        gray, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80)
+    )
     face_count = len(faces)
 
     result = {
         "face_count": face_count,
-        "gaze_direction": "CENTER",
+        "gaze_direction": "center",
         "confidence": 1.0,
         "flagged": False,
         "alert_type": None,
@@ -50,9 +121,11 @@ def analyze_frame(frame: np.ndarray) -> dict:
         "risk_delta": 0.0,
     }
 
+    # ── No face ──────────────────────────────────────────────────────────────
     if face_count == 0:
         result.update({
-            "gaze_direction": "NONE",
+            "gaze_direction": "none",
+            "confidence": 1.0,
             "flagged": True,
             "alert_type": "NO_FACE",
             "severity": "HIGH",
@@ -61,6 +134,7 @@ def analyze_frame(frame: np.ndarray) -> dict:
         })
         return result
 
+    # ── Multiple faces ────────────────────────────────────────────────────────
     if face_count > 1:
         result.update({
             "flagged": True,
@@ -71,86 +145,76 @@ def analyze_frame(frame: np.ndarray) -> dict:
         })
         return result
 
-    # Single face detected — analyze gaze
+    # ── Single face — detailed analysis ─────────────────────────────────────
     fx, fy, fw, fh = faces[0]
     face_roi_gray = gray[fy:fy + fh, fx:fx + fw]
-    face_roi_color = frame[fy:fy + fh, fx:fx + fw]
     face_cx = fx + fw // 2
     face_cy = fy + fh // 2
 
-    # Gaze direction based on face center position within frame
-    gaze_direction = "CENTER"
-    h_margin = w * 0.20
-    v_margin_top = h * 0.20
-    v_margin_bottom = h * 0.20
+    # 1. Coarse gaze from face centre
+    coarse_gaze = _compute_gaze_from_face_center(face_cx, face_cy, w, h)
 
-    if face_cx < h_margin:
-        gaze_direction = "LEFT"
-    elif face_cx > w - h_margin:
-        gaze_direction = "RIGHT"
-    elif face_cy < v_margin_top:
-        gaze_direction = "UP"
-    elif face_cy > h - v_margin_bottom:
-        gaze_direction = "DOWN"
+    # 2. Refined gaze from eye positions (upper 55% of face ROI to exclude mouth)
+    upper_face_gray = face_roi_gray[:int(fh * 0.55), :]
+    eyes = EYE_CASCADE.detectMultiScale(
+        upper_face_gray, scaleFactor=1.05, minNeighbors=4, minSize=(15, 15)
+    )
+    fine_gaze = _compute_gaze_from_eyes(eyes, fw, int(fh * 0.55))
 
-    # Refine with eye detection inside face ROI
-    eyes = EYE_CASCADE.detectMultiScale(face_roi_gray, scaleFactor=1.05, minNeighbors=3, minSize=(15, 15))
-    if len(eyes) >= 2:
-        eye_centers = [(ex + ew // 2, ey + eh // 2) for (ex, ey, ew, eh) in eyes[:2]]
-        avg_eye_x = sum(e[0] for e in eye_centers) / 2
-        avg_eye_y = sum(e[1] for e in eye_centers) / 2
-        eye_x_ratio = avg_eye_x / fw
-        eye_y_ratio = avg_eye_y / fh
+    # 3. Combine: prioritise eye result; fall back to face-center
+    used_eye = fine_gaze is not None
+    gaze_direction = fine_gaze if used_eye else coarse_gaze
 
-        if eye_x_ratio < 0.35:
-            gaze_direction = "LEFT"
-        elif eye_x_ratio > 0.65:
-            gaze_direction = "RIGHT"
-        elif eye_y_ratio < 0.30:
-            gaze_direction = "UP"
-        elif eye_y_ratio > 0.60:
-            gaze_direction = "DOWN"
-        else:
-            gaze_direction = "CENTER"
+    # 4. Confidence: high when eye method agrees with face method, low otherwise
+    if used_eye:
+        confidence = 0.90 if fine_gaze == coarse_gaze else 0.65
+    else:
+        confidence = 0.50   # face-centre only is less reliable
 
-    # Lip movement heuristic: check lower-quarter face brightness variance
-    lower_face = face_roi_gray[int(fh * 0.65):, :]
-    lip_variance = float(np.var(lower_face)) if lower_face.size > 0 else 0.0
-    lip_moving = lip_variance > 800
+    # 5. Temporal smoothing for gaze
+    gaze_buf = _get_history(f"{session_key}_gaze", _gaze_history, HISTORY_SIZE)
+    gaze_buf.append(gaze_direction)
+    recent_off = sum(1 for g in gaze_buf if g != "center")
+    gaze_confirmed = recent_off >= GAZE_CONFIRM_THRESH
 
-    # Head turn detection: face box aspect ratio anomaly
+    # 6. Lip movement (normalized variance)
+    norm_lip = _normalized_lip_variance(face_roi_gray, fh)
+    lip_moving = norm_lip > 40.0   # tuned normalized threshold
+
+    # 7. Head turn via aspect ratio + temporal smoothing
     aspect_ratio = fw / fh if fh > 0 else 1.0
-    rapid_head_turn = aspect_ratio < 0.55
+    head_buf = _get_history(f"{session_key}_head", _head_turn_history, HISTORY_SIZE)
+    head_buf.append(aspect_ratio < 0.50)
+    head_turn_confirmed = sum(head_buf) >= HEAD_TURN_CONFIRM
 
-    if gaze_direction != "CENTER":
+    # ── Build result ─────────────────────────────────────────────────────────
+    result["gaze_direction"] = gaze_direction
+    result["confidence"] = round(confidence, 3)
+
+    if gaze_direction != "center" and gaze_confirmed:
         result.update({
-            "gaze_direction": gaze_direction,
             "flagged": True,
             "alert_type": "GAZE_OFF",
             "severity": "MEDIUM",
-            "description": f"Candidate looking {gaze_direction}.",
+            "description": f"Candidate consistently looking {gaze_direction.upper()}.",
             "risk_delta": 5.0,
         })
-    elif rapid_head_turn:
+    elif head_turn_confirmed:
         result.update({
-            "gaze_direction": gaze_direction,
             "flagged": True,
             "alert_type": "HEAD_TURN_RAPID",
             "severity": "MEDIUM",
-            "description": "Rapid head turn detected.",
+            "description": "Rapid or sustained head turn detected.",
             "risk_delta": 8.0,
         })
     elif lip_moving:
         result.update({
-            "gaze_direction": gaze_direction,
             "flagged": True,
             "alert_type": "LIP_MOVEMENT",
             "severity": "LOW",
             "description": "Lip movement detected — possible whispering.",
             "risk_delta": 3.0,
         })
-    else:
-        result["gaze_direction"] = gaze_direction
 
     return result
 
@@ -165,8 +229,8 @@ def save_screenshot(session_id: int, frame: np.ndarray, alert_type: str) -> str:
 
 def get_verdict(risk_score: float) -> str:
     if risk_score < 40:
-        return "TRUSTED"
+        return "trusted"
     elif risk_score < 70:
-        return "SUSPICIOUS"
+        return "suspicious"
     else:
-        return "HIGH RISK"
+        return "high_risk"

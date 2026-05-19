@@ -44,12 +44,13 @@ export function useFaceDetection(videoRef, sessionId, isActive = false) {
       const formData = new FormData();
       formData.append('frame', base64Image);
 
-      const res = await fetch(`http://localhost:8000/sessions/${sessionId}/analyze`, {
+      const res = await fetch(`http://localhost:8000/api/sessions/${sessionId}/analyze`, {
         method: 'POST',
         body: formData,
       });
       if (!res.ok) {
-        console.error("Failed to send frame to backend");
+        const errText = await res.text();
+        console.error("Failed to send frame to backend:", errText);
       }
     } catch (err) {
       console.error("API error", err);

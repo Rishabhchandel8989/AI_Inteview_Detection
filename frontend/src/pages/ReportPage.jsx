@@ -1,67 +1,77 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getSessionDetail } from '../utils/api';
-import { downloadJSON, downloadPDF } from '../utils/reportExport';
+import api from '../utils/api';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import RiskMeter from '../components/RiskMeter';
 
+const BACKEND_URL = 'http://localhost:8000';
+
 export default function ReportPage() {
-  const { id } = useParams();
+  const { id } = useParams(); // This is meeting_id
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const fetchFullReport = async () => {
+    const fetchReport = async () => {
       try {
-        const result = await getSessionDetail(id);
-        setData(result);
+        const res = await api.get(`/meetings/${id}/report`);
+        setData(res.data);
       } catch (err) {
-        console.error("Failed to load report", err);
+        console.error("Failed to load report:", err);
+        setError(err.response?.data?.detail || "Report not found or not yet available.");
       } finally {
         setLoading(false);
       }
     };
-    fetchFullReport();
+    fetchReport();
   }, [id]);
 
   const timelineData = useMemo(() => {
     if (!data?.gaze_events) return [];
-    
-    // Group gaze events into 5-second buckets to avoid rendering 1000s of points
-    const buckets = {};
     const startTime = new Date(data.session.start_time).getTime();
-    
+    const buckets = {};
     data.gaze_events.forEach(g => {
-      const gTime = new Date(g.timestamp).getTime();
-      const secOffset = Math.floor((gTime - startTime) / 1000);
+      const secOffset = Math.floor((new Date(g.timestamp).getTime() - startTime) / 1000);
       const bucketIdx = Math.floor(secOffset / 5);
-      
       if (!buckets[bucketIdx]) {
-        buckets[bucketIdx] = { 
-          timeStr: new Date(g.timestamp).toLocaleTimeString([], {minute:'2-digit', second:'2-digit'}),
-          flagCount: 0 
+        buckets[bucketIdx] = {
+          timeStr: `${bucketIdx * 5}s`,
+          gaze_off: 0
         };
       }
-      if (g.flagged) buckets[bucketIdx].flagCount += 1;
+      if (g.is_flagged) buckets[bucketIdx].gaze_off += 1;
     });
-    
     return Object.values(buckets);
   }, [data]);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-400">Loading Report Data...</div>;
-  if (!data) return <div className="min-h-screen flex items-center justify-center text-red-500">Report not found</div>;
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-400">
+      <div className="text-center">
+        <div className="w-12 h-12 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin mx-auto mb-4" />
+        <p>Loading Report Data...</p>
+      </div>
+    </div>
+  );
 
-  const { session, alerts } = data;
+  if (error || !data) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-center p-8">
+      <div>
+        <div className="text-5xl mb-4">📋</div>
+        <p className="text-red-400 text-xl font-semibold mb-2">Report Unavailable</p>
+        <p className="text-slate-500">{error || "No proctoring session was recorded for this meeting."}</p>
+        <button onClick={() => navigate('/interviewer')} className="mt-6 px-6 py-3 bg-indigo-600 rounded-xl text-white font-medium">
+          ← Back to Dashboard
+        </button>
+      </div>
+    </div>
+  );
 
-  const getVerdictGradient = (verdict) => {
-    switch (verdict) {
-      case 'TRUSTED': return 'from-green-500/20 to-transparent border-t border-green-500/50';
-      case 'SUSPICIOUS': return 'from-yellow-500/20 to-transparent border-t border-yellow-500/50';
-      case 'HIGH RISK': return 'from-red-500/20 to-transparent border-t border-red-500/50';
-      default: return 'from-slate-800 to-transparent';
-    }
-  };
+  const { session, alerts, gaze_events } = data;
+
+  const gazeOffCount = gaze_events?.filter(g => g.is_flagged).length || 0;
+  const verdictColor = session.verdict === 'trusted' ? 'text-emerald-400' : (session.verdict === 'suspicious' ? 'text-amber-400' : 'text-red-400');
 
   return (
     <div className="min-h-screen bg-slate-950 font-sans text-slate-200 p-6 md:p-10">
@@ -70,145 +80,149 @@ export default function ReportPage() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
           <div>
-            <button 
-              onClick={() => navigate('/history')}
-              className="text-brand-400 hover:text-brand-300 font-medium text-sm mb-4 inline-flex items-center gap-1 transition-colors"
+            <button
+              onClick={() => navigate('/interviewer')}
+              className="text-indigo-400 hover:text-indigo-300 font-medium text-sm mb-4 inline-flex items-center gap-1 transition-colors"
             >
-              ← Back to History
+              ← Back to Dashboard
             </button>
             <h1 className="text-3xl font-bold text-white mb-2">Proctoring Report</h1>
-            <p className="text-slate-400 text-lg">Candidate: <span className="text-white font-medium">{session.candidate_name}</span></p>
-            <p className="text-slate-500 font-mono text-sm mt-1">Session ID: INT-{String(session.id).padStart(4, '0')}</p>
+            <p className="text-slate-400 text-lg">
+              Candidate: <span className="text-white font-medium">{session.candidate_name || 'Unknown'}</span>
+            </p>
+            <p className="text-slate-500 font-mono text-sm mt-1">Meeting ID: {id}</p>
           </div>
-          
           <div className="flex gap-3">
-            <button 
-              onClick={() => downloadJSON(data)}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg font-medium text-sm transition-colors shadow-sm"
+            <button
+              onClick={() => window.print()}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg font-medium text-sm transition-colors"
             >
-              Download JSON
-            </button>
-            <button 
-              onClick={() => downloadPDF(data)}
-              className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg font-medium text-sm transition-colors shadow-lg shadow-brand-500/20"
-            >
-              Export PDF
+              🖨️ Print Report
             </button>
           </div>
         </div>
 
         {/* Top Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className={`col-span-1 glass-panel rounded-2xl p-6 bg-gradient-to-b ${getVerdictGradient(session.verdict)}`}>
-            <RiskMeter score={session.risk_score} />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <p className="text-slate-500 text-sm mb-1 uppercase tracking-wider">Verdict</p>
+            <p className={`text-2xl font-bold uppercase ${verdictColor}`}>{session.verdict}</p>
           </div>
-          
-          <div className="col-span-1 md:col-span-2 glass-panel rounded-2xl p-6 flex flex-col justify-center">
-            <h3 className="text-lg font-semibold text-slate-300 mb-6">Session Details</h3>
-            <div className="grid grid-cols-2 gap-y-6 gap-x-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <p className="text-slate-500 text-sm mb-1 uppercase tracking-wider">Risk Score</p>
+            <p className="text-2xl font-bold text-white">{Number(session.risk_score).toFixed(1)}<span className="text-sm text-slate-500">%</span></p>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <p className="text-slate-500 text-sm mb-1 uppercase tracking-wider">Gaze Off Events</p>
+            <p className="text-2xl font-bold text-amber-400">{session.total_gaze_off ?? gazeOffCount}</p>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <p className="text-slate-500 text-sm mb-1 uppercase tracking-wider">Total Flags</p>
+            <p className="text-2xl font-bold text-red-400">{session.total_flags ?? alerts.length}</p>
+          </div>
+        </div>
+
+        {/* Risk Meter + Session Details */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col items-center justify-center">
+            <p className="text-slate-500 text-sm mb-4 uppercase tracking-wider">Risk Index</p>
+            <RiskMeter score={Number(session.risk_score)} />
+          </div>
+          <div className="col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h3 className="text-lg font-semibold text-slate-300 mb-4">Session Details</h3>
+            <div className="grid grid-cols-2 gap-y-4 gap-x-8 text-sm">
               <div>
-                <p className="text-sm text-slate-500 uppercase tracking-wider mb-1">Started At</p>
-                <p className="font-medium text-slate-200">{new Date(session.start_time).toLocaleString()}</p>
+                <p className="text-slate-500 uppercase tracking-wider text-xs mb-1">Started At</p>
+                <p className="text-slate-200 font-medium">{new Date(session.start_time).toLocaleString()}</p>
               </div>
               <div>
-                <p className="text-sm text-slate-500 uppercase tracking-wider mb-1">Ended At</p>
-                <p className="font-medium text-slate-200">
-                  {session.end_time ? new Date(session.end_time).toLocaleString() : 'Ongoing'}
-                </p>
+                <p className="text-slate-500 uppercase tracking-wider text-xs mb-1">Ended At</p>
+                <p className="text-slate-200 font-medium">{session.end_time ? new Date(session.end_time).toLocaleString() : 'Ongoing'}</p>
               </div>
               <div>
-                <p className="text-sm text-slate-500 uppercase tracking-wider mb-1">Total Flags Raised</p>
-                <p className="font-medium text-xl text-brand-400">{alerts.length}</p>
+                <p className="text-slate-500 uppercase tracking-wider text-xs mb-1">Total Events</p>
+                <p className="text-slate-200 font-medium">{gaze_events?.length ?? 0}</p>
               </div>
               <div>
-                <p className="text-sm text-slate-500 uppercase tracking-wider mb-1">Final Verdict</p>
-                <p className={`font-bold ${session.verdict === 'TRUSTED' ? 'text-green-400' : session.verdict === 'SUSPICIOUS' ? 'text-yellow-400' : 'text-red-400'}`}>
-                  {session.verdict}
-                </p>
+                <p className="text-slate-500 uppercase tracking-wider text-xs mb-1">Alerts Raised</p>
+                <p className="text-slate-200 font-medium">{alerts?.length ?? 0}</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Timeline Chart */}
-        <div className="glass-panel rounded-2xl p-6">
-          <h3 className="text-lg font-semibold text-slate-300 mb-6">Suspicion Timeline</h3>
-          <div className="h-64 w-full">
-            {timelineData.length > 0 ? (
+        {/* Suspicion Timeline */}
+        {timelineData.length > 0 && (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h3 className="text-lg font-semibold text-slate-300 mb-6">Gaze-Off Timeline (per 5s bucket)</h3>
+            <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={timelineData}>
-                  <XAxis dataKey="timeStr" stroke="#64748b" tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-                  <YAxis stroke="#64748b" tick={{fill: '#94a3b8', fontSize: 12}} dx={-10} allowDecimals={false} />
-                  <Tooltip 
+                  <XAxis dataKey="timeStr" stroke="#475569" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                  <YAxis stroke="#475569" tick={{ fill: '#94a3b8', fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip
                     contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px', color: '#f8fafc' }}
-                    itemStyle={{ color: '#bae6fd' }}
-                    labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
+                    labelStyle={{ color: '#94a3b8' }}
                   />
                   <ReferenceLine y={0} stroke="#334155" />
-                  <Line 
-                    type="monotone" 
-                    dataKey="flagCount" 
-                    name="Flags / 5s"
-                    stroke="#0ea5e9" 
-                    strokeWidth={3}
-                    dot={false}
-                    activeDot={{ r: 6, fill: '#38bdf8', stroke: '#0284c7', strokeWidth: 2 }}
-                  />
+                  <Line type="monotone" dataKey="gaze_off" name="Gaze-off events" stroke="#f59e0b" strokeWidth={2} dot={false} activeDot={{ r: 5, fill: '#fbbf24' }} />
                 </LineChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-slate-500">No event data to display</div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Detailed Alert Log */}
-        <div className="glass-panel rounded-2xl p-6">
-          <h3 className="text-lg font-semibold text-slate-300 mb-6 flex justify-between items-end">
-            Alert Log
-            <span className="text-sm font-normal text-slate-500">{alerts.length} total events recorded</span>
-          </h3>
-          
-          {alerts.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 border border-slate-800 border-dashed rounded-xl">
-              No suspicious events recorded. Great job!
+        {/* Alert Log with Screenshots */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+          <div className="border-b border-slate-800 p-6 flex justify-between items-center">
+            <h3 className="text-lg font-semibold text-slate-300">Alert Log</h3>
+            <span className="text-sm text-slate-500">{alerts?.length ?? 0} events recorded</span>
+          </div>
+          {!alerts || alerts.length === 0 ? (
+            <div className="p-10 text-center text-slate-500 text-sm">
+              No suspicious events were recorded. ✅
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-800">
-              <table className="w-full text-left">
-                <thead className="bg-slate-900 border-b border-slate-800">
-                  <tr className="text-slate-400 text-sm uppercase tracking-wider">
-                    <th className="px-5 py-3 font-medium">Time</th>
-                    <th className="px-5 py-3 font-medium">Type</th>
-                    <th className="px-5 py-3 font-medium">Severity</th>
-                    <th className="px-5 py-3 font-medium">Description</th>
-                    <th className="px-5 py-3 font-medium text-center">Snapshot</th>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-800/40 text-slate-400 text-xs uppercase tracking-wider">
+                  <tr>
+                    <th className="px-5 py-3">Time</th>
+                    <th className="px-5 py-3">Type</th>
+                    <th className="px-5 py-3">Severity</th>
+                    <th className="px-5 py-3">Screenshot</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 bg-slate-900/30">
-                  {alerts.map((a) => (
-                    <tr key={a.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="px-5 py-4 font-mono text-sm text-slate-400 whitespace-nowrap">
+                <tbody className="divide-y divide-slate-800/60">
+                  {alerts.map((a, i) => (
+                    <tr key={a.id || i} className="hover:bg-slate-800/20 transition-colors">
+                      <td className="px-5 py-3 font-mono text-slate-400">
                         {new Date(a.timestamp).toLocaleTimeString()}
                       </td>
-                      <td className="px-5 py-4 font-medium text-slate-300">
-                        {a.alert_type.replace(/_/g, ' ')}
+                      <td className="px-5 py-3 text-slate-300 font-medium">
+                        {(a.alert_type || '').replace(/_/g, ' ').toUpperCase()}
                       </td>
-                      <td className="px-5 py-4">
-                        <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold border ${a.severity === 'HIGH' ? 'bg-red-500/10 text-red-400 border-red-500/20' : a.severity === 'MEDIUM' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 'bg-green-500/10 text-green-400 border-green-500/20'}`}>
-                          {a.severity}
+                      <td className="px-5 py-3">
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                          a.severity === 'high' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                          a.severity === 'medium' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                          'bg-slate-700 text-slate-400'
+                        }`}>
+                          {(a.severity || '').toUpperCase()}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-sm text-slate-400 max-w-sm">
-                        {a.description}
-                      </td>
-                      <td className="px-5 py-4 text-center">
+                      <td className="px-5 py-3">
                         {a.screenshot_path ? (
-                          <a href={`http://localhost:8000/${a.screenshot_path}`} target="_blank" rel="noreferrer" className="text-brand-500 hover:text-brand-400 text-sm border-b border-transparent hover:border-brand-400 transition-colors inline-block pb-0.5">
+                          <a
+                            href={`${BACKEND_URL}/screenshots/${a.screenshot_path.split('/').pop()}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-indigo-400 hover:text-indigo-300 font-medium underline underline-offset-2"
+                          >
                             View Image ↗
                           </a>
                         ) : (
-                          <span className="text-slate-600 text-sm">—</span>
+                          <span className="text-slate-600">—</span>
                         )}
                       </td>
                     </tr>

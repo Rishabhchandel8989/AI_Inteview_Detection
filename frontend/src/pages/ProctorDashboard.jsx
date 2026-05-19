@@ -1,128 +1,160 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { getSessionDetail } from '../utils/api';
+import { useWebRTC } from '../hooks/useWebRTC';
 import RiskMeter from '../components/RiskMeter';
 import AlertPanel from '../components/AlertPanel';
+import api from '../utils/api';
 
 export default function ProctorDashboard() {
-  const location = useLocation();
+  const { id: meetingId } = useParams();
   const navigate = useNavigate();
-  const sessionId = new URLSearchParams(location.search).get('sessionId');
+  
+  // Realtime telemetry
+  const { liveData, alerts } = useWebSocket(meetingId);
+  
+  // Realtime Video Feed (Interviewer = Host)
+  const { remoteStream, connectionStatus, callPeer } = useWebRTC(meetingId, true, null);
 
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // Use the websocket connection
-  const { alerts, riskScore, isConnected } = useWebSocket(sessionId);
+  const [meeting, setMeeting] = useState(null);
 
   useEffect(() => {
-    if (!sessionId) {
-      navigate('/history');
-      return;
+    // Fetch meeting info to ensure it exists and we're authorized
+    api.get('/meetings/my').then(res => {
+      const match = res.data.find(m => m.id === Number(meetingId));
+      if (!match) navigate('/interviewer');
+      else setMeeting(match);
+    }).catch(() => navigate('/interviewer'));
+  }, [meetingId, navigate]);
+
+  const endSession = async () => {
+    if (!window.confirm("Are you sure you want to completely end this interview session?")) return;
+    try {
+      await api.patch(`/meetings/${meetingId}/end`);
+      navigate(`/interviewer/report/${meetingId}`);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to end session");
     }
+  };
 
-    const fetchSession = async () => {
-      try {
-        const data = await getSessionDetail(sessionId);
-        setSession(data.session);
-      } catch (err) {
-        console.error("Failed to load session", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchSession();
-  }, [sessionId, navigate]);
-
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading Session Details...</div>;
-  }
-
-  if (!session) {
-    return <div className="min-h-screen flex items-center justify-center text-red-500">Session not found</div>;
-  }
+  if (!meeting) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">Loading Room...</div>;
 
   return (
-    <div className="flex flex-col h-screen bg-slate-950 text-slate-200">
-      {/* Top Navigation Bar */}
-      <header className="px-6 py-4 flex items-center justify-between border-b border-slate-800 bg-slate-900/80 backdrop-blur-md">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => navigate('/history')}
-            className="text-slate-400 hover:text-white transition-colors p-2"
-          >
-            ← Back
-          </button>
+    <div className="flex h-screen bg-slate-950 font-sans text-slate-200 p-4 gap-4">
+      {/* Left Column: Video & Telemetry */}
+      <div className="flex-[3] flex flex-col gap-4">
+        
+        {/* Header Bar */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow p-4 flex justify-between items-center h-20 shrink-0">
           <div>
-            <h1 className="font-semibold text-xl leading-tight">Proctor Dashboard</h1>
-            <p className="text-sm text-slate-400">
-              Session INT-{String(session.id).padStart(4, '0')} • {session.candidate_name}
-            </p>
+            <h1 className="text-xl font-bold text-white flex items-center gap-3">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              Live Proctoring Console
+            </h1>
+            <p className="text-xs text-slate-400 font-mono mt-1">SESSION: {meeting.invite_code} | {meeting.title}</p>
+          </div>
+          <div className="flex gap-4 items-center">
+            {connectionStatus !== 'connected' && (
+              <button onClick={callPeer} className="px-4 py-2 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-lg transition-colors text-sm font-medium">
+                Connect to Remote Camera
+              </button>
+            )}
+            <button 
+              onClick={endSession}
+              className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-red-500/20"
+            >
+              Force End Session
+            </button>
           </div>
         </div>
-        
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-400">Status:</span>
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${isConnected ? 'border-green-500/30 text-green-400 bg-green-500/10' : 'border-slate-600 text-slate-400 bg-slate-800'}`}>
-              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-slate-500'}`} />
-              {isConnected ? 'Live' : 'Disconnected'}
-            </div>
-          </div>
-        </div>
-      </header>
 
-      {/* Main Grid Layout */}
-      <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-hidden">
-        
-        {/* Left Column: Alerts & Risk */}
-        <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-6 h-full">
-          <RiskMeter score={riskScore || session.risk_score} />
-          
-          <div className="flex-1 min-h-[300px]">
+        {/* Video Feed Component */}
+        <div className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl relative">
+          {remoteStream ? (
+            <video 
+              autoPlay 
+              playsInline 
+              muted // Mute remote video so interviewer doesn't hear echo if they're in same room testing, but usually unmute!
+              ref={el => { if (el) el.srcObject = remoteStream; }} 
+              className="w-full h-full object-cover" 
+            />
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/50 backdrop-blur-sm z-10">
+              <div className="w-16 h-16 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin mb-4" />
+              <p className="text-slate-400 font-medium">Waiting for Candidate's WebRTC Camera...</p>
+              <p className="text-xs text-slate-500 mt-2">Status: {connectionStatus}</p>
+            </div>
+          )}
+
+          {/* Connection badge */}
+          <div className="absolute top-4 right-4 bg-slate-950/80 backdrop-blur border border-slate-800 px-3 py-1.5 rounded-full flex gap-2 items-center z-20 shadow">
+            <div className={`w-2 h-2 rounded-full ${liveData ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            <span className="text-xs font-mono tracking-wider font-semibold text-slate-300">
+              {liveData ? 'WS LINK UP' : 'WS WAITING'}
+            </span>
+          </div>
+
+          {/* Telemetry Overlay Panel */}
+          <div className="absolute bottom-4 left-4 flex gap-4 z-20">
+            <div className="bg-slate-950/80 backdrop-blur rounded-xl p-4 border border-slate-800 shadow-xl min-w-[200px]">
+              <div className="text-xs text-slate-500 uppercase font-semibold mb-2">Live Telemetry</div>
+              <div className="font-mono text-sm space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Gaze X</span>
+                  <span className="text-emerald-400">{liveData?.gaze_direction ? liveData.gaze_direction.toUpperCase() : '---'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Confidence</span>
+                  <span className="text-emerald-400">{liveData?.confidence != null ? (liveData.confidence * 100).toFixed(0) + '%' : '---'}</span>
+                </div>
+                <div className="flex justify-between border-t border-slate-800 pt-2 mt-2">
+                  <span className="text-slate-400">Direction</span>
+                  <span className="text-indigo-400 uppercase">{liveData?.gaze_direction || '---'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Faces detected</span>
+                  <span className={liveData?.face_count === 1 ? "text-emerald-400" : "text-amber-400"}>{liveData?.face_count ?? '-'}</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Live Verdict popup */}
+            {liveData?.verdict && (
+              <div className="bg-slate-950/80 backdrop-blur rounded-xl p-4 border border-slate-800 shadow-xl flex items-center gap-4">
+                <div className="text-right">
+                  <div className="text-xs text-slate-500 uppercase font-semibold">AI Verdict</div>
+                  <div className={`text-lg font-bold uppercase tracking-wider ${liveData.verdict === 'trusted' ? 'text-emerald-500' : liveData.verdict === 'suspicious' ? 'text-amber-500' : 'text-red-500'}`}>
+                    {liveData.verdict.replace('_', ' ')}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Right Column: Gauges & Alerts */}
+      <div className="flex-[1] flex flex-col gap-4 min-w-[320px] max-w-[400px]">
+        {/* Dial Card */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow p-6 flex flex-col items-center justify-center shrink-0">
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-6">Real-time Risk Index</h2>
+          <RiskMeter score={liveData?.risk_score || 0} />
+          <div className="mt-6 text-center">
+            <span className="text-3xl font-bold text-white">{liveData ? liveData.risk_score.toFixed(1) : 0}<span className="text-lg text-slate-500">%</span></span>
+          </div>
+        </div>
+
+        {/* Alert Stream */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow flex-1 overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Automated Incident Logs</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
             <AlertPanel alerts={alerts} />
           </div>
         </div>
-
-        {/* Right Column: Placeholder for Video Feed */}
-        <div className="lg:col-span-8 xl:col-span-9 glass-panel rounded-xl overflow-hidden flex flex-col">
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500 bg-slate-900/50">
-            <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-4">
-               📷
-            </div>
-            <h3 className="text-xl font-medium text-slate-300 mb-2">WebRTC Video Feed Placeholder</h3>
-            <p className="max-w-md mx-auto">
-              In a full production build, a WebRTC peer-to-peer connection or media server stream would be rendered here so the proctor can view the candidate in real-time.
-              <br /><br />
-              Currently relying on the WebSocket event stream to monitor behavior.
-            </p>
-          </div>
-          
-          {/* Quick Session Stats */}
-          <div className="h-24 bg-slate-900 border-t border-slate-800 flex divide-x divide-slate-800">
-             <div className="flex-1 px-6 py-4 flex flex-col justify-center">
-               <span className="text-xs text-slate-400 uppercase tracking-wider mb-1">Started At</span>
-               <span className="font-medium font-mono">
-                 {new Date(session.start_time).toLocaleTimeString()}
-               </span>
-             </div>
-             <div className="flex-1 px-6 py-4 flex flex-col justify-center">
-               <span className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Events</span>
-               <span className="font-medium text-xl text-brand-400">{alerts.length}</span>
-             </div>
-             <div className="flex-1 px-6 py-4 flex flex-col justify-center align-end">
-               <button 
-                 onClick={() => navigate(`/report/${session.id}`)}
-                 className="w-full bg-slate-800 hover:bg-slate-700 transition-colors py-2 rounded font-medium text-sm text-brand-300 border border-slate-700"
-               >
-                 View Full Report
-               </button>
-             </div>
-          </div>
-        </div>
-
-      </main>
+      </div>
     </div>
   );
 }
