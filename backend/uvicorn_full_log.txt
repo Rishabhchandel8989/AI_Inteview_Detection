@@ -1,0 +1,21 @@
+=== STDOUT ===
+
+=== STDERR ===
+INFO:     Started server process [24528]
+INFO:     Waiting for application startup.
+F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\aiomysql\cursors.py:239: Warning: Can't create database 'proctoring_db'; database exists
+  await self._query(query)
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('0.0.0.0', 8000): [winerror 10048] only one usage of each socket address (protocol/network address/port) is normally permitted
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+Exception ignored in: <function Connection.__del__ at 0x000001D058042FC0>
+Traceback (most recent call last):
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\aiomysql\connection.py", line 1131, in __del__
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\aiomysql\connection.py", line 339, in close
+  File "C:\Python313\Lib\asyncio\proactor_events.py", line 109, in close
+  File "C:\Python313\Lib\asyncio\base_events.py", line 833, in call_soon
+  File "C:\Python313\Lib\asyncio\base_events.py", line 556, in _check_closed
+RuntimeError: Event loop is closed
+
+=== Return code: 1 ===

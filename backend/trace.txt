@@ -1,40 +1,189 @@
 Traceback (most recent call last):
-  File "F:\AI_Inteview_Detection\backend\test_import.py", line 3, in <module>
-    import main
-  File "F:\AI_Inteview_Detection\backend\main.py", line 9, in <module>
-    from sqlalchemy.ext.asyncio import AsyncSession
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\__init__.py", line 13, in <module>
-    from .engine import AdaptedConnection as AdaptedConnection
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\__init__.py", line 18, in <module>
-    from . import events as events
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\events.py", line 19, in <module>
-    from .base import Connection
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 30, in <module>
-    from .interfaces import BindTyping
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\interfaces.py", line 38, in <module>
-    from ..sql.compiler import Compiled as Compiled
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\sql\__init__.py", line 14, in <module>
-    from .compiler import COLLECT_CARTESIAN_PRODUCTS as COLLECT_CARTESIAN_PRODUCTS
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\sql\compiler.py", line 62, in <module>
-    from . import crud
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\sql\crud.py", line 34, in <module>
-    from . import dml
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\sql\dml.py", line 34, in <module>
-    from . import util as sql_util
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\sql\util.py", line 46, in <module>
-    from .ddl import sort_tables as sort_tables  # noqa: F401
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 30, in <module>
-    from .elements import ClauseElement
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 806, in <module>
-    class SQLCoreOperations(Generic[_T_co], ColumnOperators, TypingOnly):
-    ...<372 lines>...
-            def __rfloordiv__(self, other: Any) -> ColumnElement[Any]: ...
-  File "C:\Python313\Lib\typing.py", line 1257, in _generic_init_subclass
-    super(Generic, cls).__init_subclass__(*args, **kwargs)
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 1981, in __init_subclass__
-    raise AssertionError(
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\aiomysql\connection.py", line 527, in _connect
+    self._reader, self._writer = await \
+                                 ^^^^^^^
+    ...<4 lines>...
+            timeout=self.connect_timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\aiomysql\connection.py", line 87, in _open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        lambda: protocol, host, port, **kwds)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1117, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        (host, port), family=family,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        type=socket.SOCK_STREAM, proto=proto, flags=flags, loop=self)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1500, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                  proto=proto, flags=flags)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 939, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "C:\Python313\Lib\socket.py", line 977, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11003] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3317, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 448, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1272, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 712, in checkout
+    rec = pool._do_get()
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 175, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 389, in _create_connection
+    return _ConnectionRecord(self)
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 674, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 900, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 896, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 667, in connect
+    return dialect.connect(*cargs_tup, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 630, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\dialects\mysql\aiomysql.py", line 170, in connect
+    await_only(creator_fn(*arg, **kw)),
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\aiomysql\connection.py", line 74, in _connect
+    await conn._connect()
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\aiomysql\connection.py", line 563, in _connect
+    raise OperationalError(
     ...<2 lines>...
+    ) from e
+pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on '6062@localhost'")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "F:\AI_Inteview_Detection\backend\test_mysql.py", line 9, in run
+    await init_db()
+  File "F:\AI_Inteview_Detection\backend\database.py", line 163, in init_db
+    async with engine.begin() as conn:
+               ~~~~~~~~~~~~^^
+  File "C:\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\ext\asyncio\engine.py", line 1068, in begin
+    async with conn:
+               ^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\ext\asyncio\base.py", line 121, in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\ext\asyncio\engine.py", line 275, in start
+    await greenlet_spawn(self.sync_engine.connect)
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3293, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 145, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        err, dialect, engine
+        ^^^^^^^^^^^^^^^^^^^^
     )
-AssertionError: Class <class 'sqlalchemy.sql.elements.SQLCoreOperations'> directly inherits TypingOnly but has additional attributes {'__static_attributes__', '__firstlineno__'}.
+    ^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2448, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3317, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 448, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1272, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 712, in checkout
+    rec = pool._do_get()
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 175, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 389, in _create_connection
+    return _ConnectionRecord(self)
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 674, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 900, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 896, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 667, in connect
+    return dialect.connect(*cargs_tup, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 630, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\dialects\mysql\aiomysql.py", line 170, in connect
+    await_only(creator_fn(*arg, **kw)),
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\aiomysql\connection.py", line 74, in _connect
+    await conn._connect()
+  File "F:\AI_Inteview_Detection\backend\venv\Lib\site-packages\aiomysql\connection.py", line 563, in _connect
+    raise OperationalError(
+    ...<2 lines>...
+    ) from e
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (2003, "Can't connect to MySQL server on '6062@localhost'")
+(Background on this error at: https://sqlalche.me/e/20/e3q8)

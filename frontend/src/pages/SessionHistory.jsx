@@ -1,122 +1,113 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getSessions } from '../utils/api';
+import api from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
 
-export default function SessionHistory() {
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
+export default function IntervieweeDashboard() {
+  const [inviteCode, setInviteCode] = useState('');
+  const [meetings, setMeetings] = useState([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        const data = await getSessions();
-        setSessions(data);
-      } catch (err) {
-        console.error("Failed to load sessions", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchHistory();
+    fetchMyMeetings();
   }, []);
 
-  const getVerdictStyle = (verdict) => {
-    switch (verdict) {
-      case 'TRUSTED': return 'bg-green-500/20 text-green-400 border border-green-500/30';
-      case 'SUSPICIOUS': return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30';
-      case 'HIGH RISK': return 'bg-red-500/20 text-red-400 border border-red-500/30';
-      default: return 'bg-slate-700 text-slate-300';
+  const fetchMyMeetings = async () => {
+    try {
+      const res = await api.get('/meetings/my');
+      setMeetings(res.data);
+    } catch (err) {
+      console.error("Failed to fetch history", err);
     }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 font-medium text-slate-400">Loading Sessions...</div>;
+  const handleJoin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.post('/meetings/join', { invite_code: inviteCode });
+      navigate(`/interviewee/room/${res.data.id}`);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to join meeting");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-950 p-6 sm:p-12 font-sans text-slate-200">
-      <div className="max-w-6xl mx-auto space-y-8">
-        
-        <div className="flex justify-between items-end pb-6 border-b border-slate-800">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Proctoring History</h1>
-            <p className="text-slate-400">Review past assessment sessions and AI-generated risk reports.</p>
+    <div className="min-h-screen bg-slate-950 text-slate-300 p-8">
+      <div className="max-w-4xl mx-auto space-y-8">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold text-white">Candidate Dashboard</h1>
+          <div className="flex items-center gap-4">
+            <span className="text-slate-400">Welcome, {user?.name}</span>
+            <button onClick={logout} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-colors">
+              Sign Out
+            </button>
           </div>
-          <button 
-            onClick={() => navigate('/candidate')}
-            className="px-5 py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-brand-500/20"
-          >
-            Start New Session
-          </button>
         </div>
 
-        {sessions.length === 0 ? (
-          <div className="text-center py-20 px-6 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/50">
-            <h3 className="text-xl font-medium mb-3 text-slate-300">No Sessions Yet</h3>
-            <p className="text-slate-500 mb-6 max-w-sm mx-auto">Click "Start New Session" to begin monitoring your first assessment.</p>
-          </div>
-        ) : (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
-            <div className="overflow-x-auto">
+        {/* Join Gateway */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+          <h2 className="text-xl text-white font-semibold mb-4">Join an Interview</h2>
+          <form onSubmit={handleJoin} className="flex gap-4 items-start">
+            <div className="flex-1">
+              <input 
+                type="text" 
+                placeholder="Enter 8-character Invite Code (e.g. ABC-123)"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                required
+                className="w-full bg-slate-800 border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono text-lg uppercase"
+              />
+              {error && <p className="text-red-400 mt-2 text-sm">{error}</p>}
+            </div>
+            <button 
+              type="submit" 
+              disabled={loading || !inviteCode}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-8 py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? "Joining..." : "Join Room"}
+            </button>
+          </form>
+        </div>
+
+        {/* Past History */}
+        <div>
+          <h2 className="text-xl text-white font-semibold mb-4">Past Interviews</h2>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            {meetings.length === 0 ? (
+              <div className="p-8 text-center text-slate-500">You haven't attended any interviews yet.</div>
+            ) : (
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-950/50 text-slate-400 text-sm uppercase tracking-wider border-b border-slate-800">
-                    <th className="px-6 py-4 font-medium">Session ID</th>
-                    <th className="px-6 py-4 font-medium">Candidate</th>
-                    <th className="px-6 py-4 font-medium">Started At</th>
-                    <th className="px-6 py-4 font-medium text-center">Score</th>
-                    <th className="px-6 py-4 font-medium">Verdict</th>
-                    <th className="px-6 py-4 font-medium text-right">Actions</th>
+                  <tr className="bg-slate-800/50 text-slate-400 text-sm">
+                    <th className="p-4 font-semibold">Title</th>
+                    <th className="p-4 font-semibold text-center">Date</th>
+                    <th className="p-4 font-semibold text-center">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/50">
-                  {sessions.map((s) => (
-                    <tr key={s.id} className="hover:bg-slate-800/50 transition-colors group">
-                      <td className="px-6 py-4 font-mono text-sm text-slate-400">
-                        INT-{String(s.id).padStart(4, '0')}
-                      </td>
-                      <td className="px-6 py-4 font-medium text-slate-200">
-                        {s.candidate_name}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-400">
-                        {new Date(s.start_time).toLocaleString()}
-                        {!s.end_time && (
-                           <span className="ml-2 inline-flex items-center gap-1 text-xs font-mono text-brand-400">
-                             <div className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" /> LIVE
-                           </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center font-mono font-semibold">
-                        {s.risk_score.toFixed(1)}%
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex px-3 py-1 rounded-full text-xs font-bold leading-none uppercase tracking-wide ${getVerdictStyle(s.verdict)}`}>
-                          {s.verdict}
+                <tbody className="divide-y divide-slate-800">
+                  {meetings.map(m => (
+                    <tr key={m.id} className="hover:bg-slate-800/20 transition-colors">
+                      <td className="p-4 font-medium text-slate-200">{m.title}</td>
+                      <td className="p-4 text-center">{new Date(m.scheduled_at).toLocaleString()}</td>
+                      <td className="p-4 text-center">
+                        <span className={`px-2 py-1 rounded text-xs font-semibold ${m.status === 'completed' ? 'bg-emerald-900/50 text-emerald-400' : 'bg-amber-900/50 text-amber-400'}`}>
+                          {m.status.toUpperCase()}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 text-right space-x-3">
-                        {!s.end_time ? (
-                          <button
-                            onClick={() => navigate(`/proctor?sessionId=${s.id}`)}
-                            className="text-brand-400 hover:text-brand-300 font-medium text-sm transition-colors"
-                          >
-                            Join Dashboard
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => navigate(`/report/${s.id}`)}
-                            className="text-slate-400 hover:text-white font-medium text-sm transition-colors group-hover:underline"
-                          >
-                            View Report →
-                          </button>
-                        )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

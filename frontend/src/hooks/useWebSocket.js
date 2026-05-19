@@ -1,55 +1,107 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WEBSOCKET_URL = "ws://localhost:8000/ws";
-
-export function useWebSocket(sessionId) {
+export function useWebSocket(meetingId) {
+  const [liveData, setLiveData] = useState(null);
   const [alerts, setAlerts] = useState([]);
-  const [riskScore, setRiskScore] = useState(0);
-  const [verdict, setVerdict] = useState("TRUSTED");
   const wsRef = useRef(null);
 
   const connect = useCallback(() => {
-    if (!sessionId) return;
+    // Don't connect if no meetingId or already connected
+    if (!meetingId || wsRef.current) return;
     
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
+    const ws = new WebSocket(`ws://localhost:8000/ws/meeting/${meetingId}`);
+    wsRef.current = ws;
 
-    const ws = new WebSocket(`${WEBSOCKET_URL}/${sessionId}`);
-    
+    ws.onopen = () => {
+      console.log('[WS] Connected to meeting room', meetingId);
+    };
+
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'detection') {
+          setLiveData(data);
           if (data.flagged) {
-            setAlerts(prev => [data, ...prev].slice(0, 50)); // Keep last 50 alerts
-            setRiskScore(data.risk_score);
-            setVerdict(data.verdict);
+            setAlerts(prev => [{
+              id: Date.now(),
+              timestamp: data.timestamp || new Date().toISOString(),
+              alert_type: (data.alert_type || 'UNKNOWN').toUpperCase(),
+              description: data.description || 'Suspicious activity detected',
+              severity: (data.severity || 'medium').toUpperCase()
+            }, ...prev].slice(0, 20));
           }
         }
       } catch (err) {
-        console.error("Error parsing websocket message", err);
+        console.error('[WS] Parse error:', err);
       }
     };
 
-    ws.onclose = () => {
-      console.log('WebSocket connection closed.');
+    ws.onclose = (e) => {
+      // Only log, don't auto-reconnect to avoid spam
+      // Code 1000 = normal close, anything else = unexpected
+      if (e.code !== 1000) {
+        console.warn('[WS] Connection closed unexpectedly. Code:', e.code);
+      }
+      wsRef.current = null;
     };
 
-    wsRef.current = ws;
-
-  }, [sessionId]);
+    ws.onerror = (err) => {
+      console.error('[WS] Error:', err);
+    };
+  }, [meetingId]);
 
   useEffect(() => {
-    if (sessionId) {
-      connect();
-    }
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
+    if (!meetingId) return;
+    
+    let isMounted = true; // StrictMode guard
+    const ws = new WebSocket(`ws://localhost:8000/ws/meeting/${meetingId}`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      if (!isMounted) { ws.close(1000, 'Strict mode cleanup'); return; }
+      console.log('[WS] Connected to meeting room', meetingId);
+    };
+
+    ws.onmessage = (event) => {
+      if (!isMounted) return;
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'detection') {
+          setLiveData(data);
+          if (data.flagged) {
+            setAlerts(prev => [{
+              id: Date.now(),
+              timestamp: data.timestamp || new Date().toISOString(),
+              alert_type: (data.alert_type || 'UNKNOWN').toUpperCase(),
+              description: data.description || 'Suspicious activity detected',
+              severity: (data.severity || 'medium').toUpperCase()
+            }, ...prev].slice(0, 20));
+          }
+        }
+      } catch (err) {
+        console.error('[WS] Parse error:', err);
       }
     };
-  }, [sessionId, connect]);
 
-  return { alerts, riskScore, verdict, isConnected: !!wsRef.current && wsRef.current.readyState === WebSocket.OPEN };
+    ws.onclose = (e) => {
+      wsRef.current = null;
+      if (!isMounted) return;
+      if (e.code !== 1000) {
+        console.warn('[WS] Connection closed unexpectedly. Code:', e.code);
+      }
+    };
+
+    ws.onerror = () => {}; // Suppress — onclose fires after with details
+    
+    return () => {
+      isMounted = false;
+      // Only close if socket is OPEN (1) or CONNECTING (0) — avoid double-close
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close(1000, 'Component unmounted');
+      }
+      wsRef.current = null;
+    };
+  }, [meetingId]);
+
+  return { liveData, alerts };
 }
